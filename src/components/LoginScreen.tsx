@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Booth } from '../types';
-import { getBooths, getUniqueVisitorCountForBooth } from '../utils/storage';
 import { 
   Building2, 
   KeyRound, 
@@ -19,8 +18,12 @@ import {
   Coins,
   Search,
   ScanLine,
-  Trophy
+  Trophy,
+  LogIn
 } from 'lucide-react';
+import { loginWithGoogle, auth } from '../firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { useBooths, useScansForBooth, seedBooths } from '../hooks/useFirestore';
 
 interface LoginScreenProps {
   onLogin: (boothId: string) => void;
@@ -43,12 +46,67 @@ const getBoothIcon = (id: string) => {
   }
 };
 
+const BoothCard: React.FC<{ b: Booth, selectedBoothId: string, onSelect: (id: string) => void }> = ({ b, selectedBoothId, onSelect }) => {
+  const scans = useScansForBooth(b.id);
+  const uniqueVisitorCount = new Set(scans.map(s => s.attendee_id)).size;
+
+  return (
+    <div
+      key={b.id}
+      onClick={() => onSelect(b.id)}
+      className={`group relative overflow-hidden flex flex-col p-4 rounded-2xl border transition-all duration-300 cursor-pointer ${
+        selectedBoothId === b.id 
+          ? 'bg-slate-800 border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.2)]' 
+          : 'bg-slate-900/50 border-slate-800 hover:border-slate-600 hover:bg-slate-800/80'
+      }`}
+    >
+      <div className="flex justify-between items-start mb-3 relative z-10">
+        <div className={`p-2.5 rounded-xl ${selectedBoothId === b.id ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-800 text-slate-400 group-hover:text-slate-300 group-hover:bg-slate-700'}`}>
+          {getBoothIcon(b.id)}
+        </div>
+        {selectedBoothId === b.id && (
+          <div className="bg-indigo-500 text-white p-1 rounded-full animate-in zoom-in">
+            <CheckCircle className="w-4 h-4" />
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1 relative z-10 flex-grow">
+        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{b.category || b.id}</div>
+        <h3 className="font-bold text-sm text-slate-200 group-hover:text-white transition-colors line-clamp-2 leading-tight">
+          {b.name}
+        </h3>
+        <p className="text-xs text-slate-500 line-clamp-2 pt-1">{b.description}</p>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-slate-800/50 flex items-center justify-between relative z-10">
+        <div className="text-xs text-slate-400 font-mono bg-slate-950 px-2 py-1 rounded border border-slate-800">{b.id}</div>
+        <div className="text-xs text-sky-400 font-semibold bg-sky-900/20 px-2 py-1 rounded-full border border-sky-800/30">
+          {uniqueVisitorCount} Visitors
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToLeaderboard }) => {
-  const [booths] = useState<Booth[]>(getBooths());
+  const { booths, loading } = useBooths();
   const [customBoothInput, setCustomBoothInput] = useState('');
   const [selectedBoothId, setSelectedBoothId] = useState<string>('Booth1');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    seedBooths();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return unsubscribe;
+  }, []);
 
   const handleManualLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,8 +121,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToL
       setError(null);
       onLogin(matched.id);
     } else {
-      // Validate against pre-seeded credentials or valid Booth IDs
-      setError(`Invalid Booth ID "${targetId}". Valid Booth IDs are Booth1 through Booth10.`);
+      setError(`Invalid Booth ID "${targetId}".`);
     }
   };
 
@@ -74,6 +131,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToL
     setError(null);
     onLogin(boothId);
   };
+
+  const handleGoogleLogin = async () => {
+    try {
+      setError(null);
+      await loginWithGoogle();
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign in');
+    }
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const filteredBooths = booths.filter(b => 
     b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -107,170 +181,128 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToL
           </div>
 
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-100 tracking-tight">
-            Booth Scanner & Tiered Point System
+            Booth Scanner Login
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
-            Log in to your assigned event booth to scan attendee QR codes and award tiered visit points in real time.
+          <p className="text-slate-400 text-sm max-w-lg mx-auto">
+            {user ? 'Select a booth to start scanning guest badges and awarding tier-based points.' : 'Sign in as a booth operator to start scanning.'}
           </p>
         </div>
 
-        {/* Login Form Card */}
-        <div className="bg-[#0F172A]/90 border border-slate-800/80 rounded-3xl p-5 sm:p-7 shadow-2xl backdrop-blur-xl relative overflow-hidden">
-          <div className="flex flex-col md:flex-row gap-6 items-start">
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-center animate-in fade-in slide-in-from-top-2">
+            {error}
+          </div>
+        )}
+
+        {!user ? (
+          <div className="w-full max-w-sm mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 bg-sky-500/10 blur-[60px] w-32 h-32 rounded-full pointer-events-none" />
             
-            {/* Left: Input & Fast Login */}
-            <div className="w-full md:w-5/12 space-y-4">
-              <div className="space-y-1">
-                <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2 tracking-tight">
-                  <KeyRound className="w-5 h-5 text-sky-400" />
-                  Booth POC Authentication
+            <div className="flex flex-col items-center justify-center space-y-6">
+              <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center shadow-inner">
+                <KeyRound className="w-8 h-8 text-slate-400" />
+              </div>
+              
+              <div className="text-center space-y-2">
+                <h2 className="text-xl font-bold text-white">Operator Access</h2>
+                <p className="text-slate-400 text-sm">Please sign in with your authorized event account to continue.</p>
+              </div>
+
+              <button
+                onClick={handleGoogleLogin}
+                className="w-full flex items-center justify-center gap-2 bg-white hover:bg-gray-100 text-slate-900 font-semibold py-3 px-4 rounded-xl transition-all active:scale-95 shadow-sm"
+              >
+                <LogIn className="w-4 h-4" />
+                Sign in with Google
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+            
+            <div className="absolute top-0 right-0 p-8 bg-indigo-500/10 blur-[80px] w-64 h-64 rounded-full pointer-events-none" />
+            <div className="absolute bottom-0 left-0 p-8 bg-emerald-500/10 blur-[80px] w-64 h-64 rounded-full pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b border-slate-800 pb-6">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-indigo-400" />
+                  Select Your Assigned Booth
                 </h2>
-                <p className="text-xs text-slate-400">
-                  Select your booth from the list or enter your assigned Booth ID.
+                <p className="text-slate-400 text-sm mt-1">
+                  Choose the booth you are operating for this session. Signed in as {user.email}.
                 </p>
               </div>
 
-              <form onSubmit={handleManualLogin} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Booth ID (Booth1 – Booth10)
+              {/* Search Bar */}
+              <div className="relative max-w-xs w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search booths..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-slate-600 transition-all shadow-inner"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+              {filteredBooths.map((b) => (
+                <BoothCard 
+                  key={b.id} 
+                  b={b} 
+                  selectedBoothId={selectedBoothId} 
+                  onSelect={handleCardSelect} 
+                />
+              ))}
+              
+              {filteredBooths.length === 0 && (
+                <div className="col-span-full py-12 text-center flex flex-col items-center justify-center bg-slate-950/50 rounded-2xl border border-slate-800 border-dashed">
+                  <Search className="w-8 h-8 text-slate-600 mb-3" />
+                  <p className="text-slate-400 font-medium">No booths found matching "{searchQuery}"</p>
+                  <p className="text-slate-500 text-sm mt-1">Try a different search term or category.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Manual Form (Optional Override) */}
+            <div className="pt-6 border-t border-slate-800 relative z-10">
+              <form onSubmit={handleManualLogin} className="flex flex-col sm:flex-row items-end sm:items-center gap-4 bg-slate-950/50 p-4 rounded-2xl border border-slate-800">
+                <div className="flex-1 w-full relative">
+                  <label htmlFor="boothId" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 ml-1">
+                    Manual Booth ID Override
                   </label>
                   <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <KeyRound className="h-4 w-4 text-slate-600" />
+                    </div>
                     <input
-                      id="booth-id-input"
+                      id="boothId"
                       type="text"
-                      placeholder="e.g. Booth1"
                       value={customBoothInput}
                       onChange={(e) => {
                         setCustomBoothInput(e.target.value);
-                        setError(null);
+                        setSelectedBoothId(e.target.value);
                       }}
-                      className="w-full pl-4 pr-10 py-3 rounded-xl bg-[#020617] border border-slate-700 text-slate-100 placeholder-slate-500 font-mono text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      className="block w-full pl-10 pr-3 py-3 border border-slate-700 rounded-xl bg-slate-900 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono text-sm shadow-inner"
+                      placeholder="e.g. Booth1"
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">
-                      ID
-                    </div>
                   </div>
-                  {error && (
-                    <p className="text-xs font-medium text-rose-400 mt-1.5 animate-fadeIn">
-                      {error}
-                    </p>
-                  )}
                 </div>
-
+                
                 <button
-                  id="login-submit-btn"
                   type="submit"
-                  className="w-full py-3.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-950/50 hover:shadow-sky-900/50 active:scale-[0.99] transition-all cursor-pointer"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-6 rounded-xl transition-all active:scale-95 shadow-md shadow-indigo-900/20"
                 >
-                  <span>Enter Booth Scanner</span>
+                  <span>Connect Scanner</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
-
-              {/* Point Tier Quick Reference */}
-              <div className="p-3.5 bg-[#020617]/70 border border-slate-800/90 rounded-2xl space-y-2">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  Live Scoring Tiers
-                </div>
-                <div className="grid grid-cols-2 gap-1.5 text-xs">
-                  <div className="p-1.5 rounded-lg bg-[#0F172A] border border-slate-800 flex justify-between items-center">
-                    <span className="text-slate-400 text-[11px]">Visits 1–10:</span>
-                    <strong className="text-emerald-400 font-bold">100 pts</strong>
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-[#0F172A] border border-slate-800 flex justify-between items-center">
-                    <span className="text-slate-400 text-[11px]">Visits 11–50:</span>
-                    <strong className="text-sky-400 font-bold">85 pts</strong>
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-[#0F172A] border border-slate-800 flex justify-between items-center">
-                    <span className="text-slate-400 text-[11px]">Visits 51–90:</span>
-                    <strong className="text-amber-400 font-bold">65 pts</strong>
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-[#0F172A] border border-slate-800 flex justify-between items-center">
-                    <span className="text-slate-400 text-[11px]">Visits 91+:</span>
-                    <strong className="text-purple-400 font-bold">45 pts</strong>
-                  </div>
-                </div>
-              </div>
             </div>
-
-            {/* Right: Quick Selection Grid for 10 Pre-populated Booths */}
-            <div className="w-full md:w-7/12 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-slate-300">
-                  Pre-Seeded Booths (Click to Log In)
-                </span>
-                <span className="text-[11px] font-semibold text-sky-400">
-                  {booths.length} Active Stations
-                </span>
-              </div>
-
-              {/* Search filter for booths */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="booth-search-input"
-                  type="text"
-                  placeholder="Filter booths by name or topic..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 rounded-xl bg-[#020617] border border-slate-800 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Booth Cards Scroll Area */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[380px] overflow-y-auto pr-1">
-                {filteredBooths.map((booth) => {
-                  const visitors = getUniqueVisitorCountForBooth(booth.id);
-                  return (
-                    <button
-                      key={booth.id}
-                      id={`booth-select-${booth.id}`}
-                      type="button"
-                      onClick={() => handleCardSelect(booth.id)}
-                      className="text-left p-3 rounded-2xl bg-[#020617]/80 hover:bg-slate-800/90 border border-slate-800 hover:border-sky-500/60 transition-all duration-200 group flex flex-col justify-between relative cursor-pointer"
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <div className="p-1.5 rounded-xl bg-[#0F172A] border border-slate-800 group-hover:border-sky-500/40">
-                            {getBoothIcon(booth.id)}
-                          </div>
-                          <div>
-                            <span className="font-mono text-[10px] font-bold text-sky-400 uppercase">
-                              {booth.id}
-                            </span>
-                            <h3 className="text-xs font-bold text-slate-100 group-hover:text-sky-300 leading-tight">
-                              {booth.name.replace(/^Booth \d+:\s*/, '')}
-                            </h3>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-slate-800/60">
-                        <span className="truncate max-w-[120px]">{booth.location}</span>
-                        <span className="font-mono font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-900/60">
-                          {visitors} visits
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
+            
           </div>
-        </div>
-
-        {/* Footer info */}
-        <div className="text-center text-xs text-slate-500 flex flex-wrap items-center justify-center gap-4">
-          <span>Single-device local storage persistence enabled</span>
-          <span>•</span>
-          <span>Unique attendee per booth enforcement</span>
-          <span>•</span>
-          <span>Zero external backend required</span>
-        </div>
-
+        )}
       </div>
     </div>
   );

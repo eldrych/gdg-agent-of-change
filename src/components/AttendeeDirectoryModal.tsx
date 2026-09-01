@@ -1,29 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { getAttendees, getScans, getBooths } from '../utils/storage';
 import { Attendee, Scan, Booth } from '../types';
 import { X, Users, Award, Search, CheckCircle2, ChevronRight } from 'lucide-react';
+import { useAttendees, useBooths } from '../hooks/useFirestore';
+import { collection, query, getDocs } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 
 interface AttendeeDirectoryModalProps {
   onClose: () => void;
 }
 
 export const AttendeeDirectoryModal: React.FC<AttendeeDirectoryModalProps> = ({ onClose }) => {
+  const allAttendees = useAttendees();
+  const { booths } = useBooths();
+
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
-  const [booths, setBooths] = useState<Booth[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAttendee, setSelectedAttendee] = useState<Attendee | null>(null);
   const [badgeQrUrl, setBadgeQrUrl] = useState<string>('');
 
   useEffect(() => {
-    const attList = Object.values(getAttendees()).sort((a, b) => b.total_points - a.total_points);
+    const attList = [...allAttendees].sort((a, b) => b.total_points - a.total_points);
     setAttendees(attList);
-    setScans(getScans());
-    setBooths(getBooths());
-    if (attList.length > 0) {
+    if (!selectedAttendee && attList.length > 0) {
       setSelectedAttendee(attList[0]);
     }
+  }, [allAttendees]);
+
+  useEffect(() => {
+    async function loadScans() {
+      try {
+        const q = query(collection(db, 'scans'));
+        const snap = await getDocs(q);
+        const s: Scan[] = [];
+        snap.forEach(doc => s.push(doc.data() as Scan));
+        setScans(s);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, 'scans');
+      }
+    }
+    loadScans();
   }, []);
 
   useEffect(() => {

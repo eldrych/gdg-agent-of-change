@@ -428,13 +428,5 @@ export function resetAllDataToDefault(): void {
  * to easily test tier transitions!
  */
 export function simulateVisitsForBooth(boothId: string, count: number): void {
-  const currentScans = getScansForBooth(boothId);
-  const currentCount = currentScans.length;
-  if (count <= currentCount) return;
-
-  const needed = count - currentCount;
-  for (let i = 1; i <= needed; i++) {
-    const fakeId = `Simulated-Attendee-${currentCount + i}`;
-    processScan(boothId, fakeId);
-  }
+  console.log('Simulating visits is disabled when using Firestore.');
 }

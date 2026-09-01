@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "booth": {
+      "title": "Booth",
+      "description": "Represents an event booth.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "location": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "name", "category", "location", "description"]
+    },
+    "attendee": {
+      "title": "Attendee",
+      "description": "Represents a guest who can earn points.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 100 },
+        "company": { "type": "string", "maxLength": 100 },
+        "total_points": { "type": "number", "minimum": 0 },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "total_points", "created_at"]
+    },
+    "scan": {
+      "title": "Scan",
+      "description": "Record of a booth visit.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "attendee_id": { "type": "string", "maxLength": 100 },
+        "booth_id": { "type": "string", "maxLength": 100 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "tier_points": { "type": "number", "minimum": 0 },
+        "visitor_rank": { "type": "number", "minimum": 1 }
+      },
+      "required": ["id", "attendee_id", "booth_id", "timestamp", "tier_points", "visitor_rank"]
+    }
+  },
+  "firestore": {
+    "/booths/{boothId}": {
+      "schema": { "$ref": "#/entities/booth" },
+      "description": "Event booths"
+    },
+    "/attendees/{attendeeId}": {
+      "schema": { "$ref": "#/entities/attendee" },
+      "description": "Event attendees and points"
+    },
+    "/scans/{scanId}": {
+      "schema": { "$ref": "#/entities/scan" },
+      "description": "Records of scans"
+    }
+  }
+}

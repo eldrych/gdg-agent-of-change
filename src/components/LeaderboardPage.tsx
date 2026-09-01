@@ -1,60 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Trophy, Medal, Crown, ArrowLeft, Maximize2, Minimize2, Sparkles, RefreshCw, Radio } from 'lucide-react';
-import { getAttendees } from '../utils/storage';
 import { Attendee } from '../types';
+import { useAttendees } from '../hooks/useFirestore';
 
 interface LeaderboardPageProps {
   onNavigateToBooth?: () => void;
 }
 
 export function LeaderboardPage({ onNavigateToBooth }: LeaderboardPageProps) {
-  const [topAttendees, setTopAttendees] = useState<Attendee[]>([]);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const fetchTop10 = () => {
-    const attendeesMap = getAttendees();
-    const attendeesList = Object.values(attendeesMap);
-    
-    // Sort descending by total_points, tie-break by name
-    const sorted = attendeesList.sort((a, b) => {
+  const allAttendees = useAttendees();
+  
+  const topAttendees = useMemo(() => {
+    const sorted = [...allAttendees].sort((a, b) => {
       if (b.total_points !== a.total_points) {
         return b.total_points - a.total_points;
       }
       return a.name.localeCompare(b.name);
     });
+    return sorted.slice(0, 10);
+  }, [allAttendees]);
 
-    // Take top 10 only
-    setTopAttendees(sorted.slice(0, 10));
-    setLastUpdated(new Date());
-  };
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    fetchTop10();
-
-    // Auto refresh every 2.5 seconds to keep live standings updated
-    const interval = setInterval(fetchTop10, 2500);
-
-    // Also listen to storage events from other tabs
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'booth_scanner_attendees' || e.key === 'booth_scanner_scans') {
-        fetchTop10();
-      }
-    };
-    window.addEventListener('storage', handleStorage);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, []);
+    setLastUpdated(new Date());
+  }, [allAttendees]);
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);
-    fetchTop10();
     setTimeout(() => setIsRefreshing(false), 400);
   };
+
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {

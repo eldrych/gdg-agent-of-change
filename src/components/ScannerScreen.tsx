@@ -2,13 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Booth, Scan, ScanResult, Attendee } from '../types';
 import { 
   getBoothById, 
-  getScansForBooth, 
   getUniqueVisitorCountForBooth, 
   getCurrentActiveTierForBooth,
-  processScan, 
   isSoundEnabled, 
   setSoundEnabled,
-  getAttendees
+  getAttendees,
+  getTierForRank
 } from '../utils/storage';
 import { playSuccessSound, playWarningSound } from '../utils/audio';
 import { QrScannerComponent } from './QrScannerComponent';
@@ -17,6 +16,7 @@ import { ScanFeedbackModal } from './ScanFeedbackModal';
 import { ManualEntryModal } from './ManualEntryModal';
 import { SampleBadgesModal } from './SampleBadgesModal';
 import { AttendeeDirectoryModal } from './AttendeeDirectoryModal';
+import { useScansForBooth, processScanFirebase, useBooths } from '../hooks/useFirestore';
 
 import { 
   LogOut, 
@@ -48,10 +48,31 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
   onLogout,
   onNavigateToLeaderboard 
 }) => {
-  const [booth, setBooth] = useState<Booth | undefined>(() => getBoothById(boothId));
-  const [scans, setScans] = useState<Scan[]>(() => getScansForBooth(boothId));
-  const [uniqueVisitorCount, setUniqueVisitorCount] = useState<number>(() => getUniqueVisitorCountForBooth(boothId));
-  const [activeTierInfo, setActiveTierInfo] = useState(() => getCurrentActiveTierForBooth(boothId));
+  const { booths } = useBooths();
+  const booth = booths.find(b => b.id.toLowerCase() === boothId.toLowerCase()) || getBoothById(boothId);
+  const scans = useScansForBooth(boothId);
+  
+  const uniqueVisitorCount = new Set(scans.map(s => s.attendee_id)).size;
+  const currentRankForNextScan = uniqueVisitorCount + 1;
+  const activeTier = getTierForRank(currentRankForNextScan);
+  
+  let nextTierStartsAt: number | null = null;
+  let visitsUntilNextTier: number | null = null;
+
+  if (activeTier.maxVisits !== null) {
+    nextTierStartsAt = activeTier.maxVisits + 1;
+    visitsUntilNextTier = activeTier.maxVisits - uniqueVisitorCount;
+  }
+
+  const activeTierInfo = {
+    currentRankForNextScan,
+    activeTier,
+    currentVisitorsCount: uniqueVisitorCount,
+    pointsForNextScan: activeTier.points,
+    nextTierStartsAt,
+    visitsUntilNextTier,
+  };
+
   const [soundOn, setSoundOn] = useState<boolean>(() => isSoundEnabled());
   
   // Modals & Overlays
@@ -59,30 +80,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
   const [showManualModal, setShowManualModal] = useState(false);
   const [showBadgesModal, setShowBadgesModal] = useState(false);
   const [showDirectoryModal, setShowDirectoryModal] = useState(false);
-
-  // Synchronize state
-  const refreshStats = useCallback(() => {
-    const b = getBoothById(boothId);
-    setBooth(b);
-    const boothScans = getScansForBooth(boothId);
-    setScans(boothScans);
-    const uniqueCount = getUniqueVisitorCountForBooth(boothId);
-    setUniqueVisitorCount(uniqueCount);
-    setActiveTierInfo(getCurrentActiveTierForBooth(boothId));
-  }, [boothId]);
-
-  useEffect(() => {
-    refreshStats();
-  }, [refreshStats]);
-
-  // Listen to cross-tab storage changes
-  useEffect(() => {
-    const handleStorageChange = () => {
-      refreshStats();
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [refreshStats]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Toggle Sound
   const handleToggleSound = () => {
@@ -92,22 +90,36 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
   };
 
   // Process a QR or Attendee ID scan
-  const handleProcessScan = useCallback((rawAttendeeInput: string) => {
-    const result = processScan(boothId, rawAttendeeInput);
-    setScanResult(result);
+  const handleProcessScan = useCallback(async (rawAttendeeInput: string) => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const result = await processScanFirebase(boothId, rawAttendeeInput, booth?.name || boothId);
+      setScanResult(result);
 
-    if (result.success) {
-      if (soundOn) playSuccessSound();
-    } else {
+      if (result.success) {
+        if (soundOn) playSuccessSound();
+      } else {
+        if (soundOn) playWarningSound();
+      }
+    } catch (err) {
+      console.error(err);
       if (soundOn) playWarningSound();
+      setScanResult({
+        success: false,
+        message: 'Network error processing scan. Please try again.',
+        attendeeId: rawAttendeeInput,
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      setIsProcessing(false);
     }
-
-    refreshStats();
-  }, [boothId, soundOn, refreshStats]);
+  }, [boothId, soundOn, isProcessing, booth?.name]);
 
   const totalPointsAwardedAtBooth = scans.reduce((acc, s) => acc + s.tier_points, 0);
 
   const isModalOpen = Boolean(scanResult || showManualModal || showBadgesModal || showDirectoryModal);
+
 
   return (
     <div id="scanner-screen" className="min-h-screen bg-[#0B0F19] text-slate-100 flex flex-col selection:bg-sky-500 selection:text-white">
@@ -410,7 +422,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
           boothId={boothId}
           onSelectAttendeeToScan={handleProcessScan}
           onClose={() => setShowBadgesModal(false)}
-          onRefreshStats={refreshStats}
+          onRefreshStats={() => {}}
         />
       )}
 
