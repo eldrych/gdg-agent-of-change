@@ -1,0 +1,6 @@
+{
+  "name": "Booth QR Scanner & Point Tracker",
+  "description": "Event Booth POC application to scan attendee QR codes and award tiered points based on booth visit order with live metrics.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
