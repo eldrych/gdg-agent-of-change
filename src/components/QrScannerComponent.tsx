@@ -106,10 +106,17 @@ export const QrScannerComponent: React.FC<QrScannerComponentProps> = ({ onScan, 
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Camera start failure:', error);
-      setCameraError(
-        error?.message ||
-          'Camera access failed. Please ensure camera permissions are granted or switch cameras.'
-      );
+      let errorMsg = error?.message || 'Camera access failed. Please ensure camera permissions are granted or switch cameras.';
+      
+      if (errorMsg.includes('AbortError') || errorMsg.includes('Timeout')) {
+        errorMsg = 'Camera took too long to start. Please try again or switch cameras.';
+      } else if (errorMsg.includes('NotReadableError') || errorMsg.includes('Could not start video source')) {
+        errorMsg = 'Camera is in use by another application or tab. Please close it and retry.';
+      } else if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission denied')) {
+        errorMsg = 'Camera permission denied. Please allow camera access in your browser settings.';
+      }
+
+      setCameraError(errorMsg);
       setScannerStarted(false);
     }
   }, [selectedCameraId, facingMode, isPaused, onScan, stopScanner]);

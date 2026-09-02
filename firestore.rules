@@ -6,7 +6,7 @@ service cloud.firestore {
     }
 
     function isSignedIn() { return request.auth != null; }
-    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isVerified() { return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'password'); }
     function isValidId(id) { return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
@@ -17,7 +17,8 @@ service cloud.firestore {
         && data.name is string && data.name.size() <= 200
         && data.category is string && data.category.size() <= 100
         && data.location is string && data.location.size() <= 200
-        && data.description is string && data.description.size() <= 1000;
+        && data.description is string && data.description.size() <= 1000
+        && (!('event_id' in data.keys()) || (data.event_id is string && data.event_id.size() <= 100));
     }
 
     function isValidAttendee(data) {
@@ -26,32 +27,32 @@ service cloud.firestore {
         && data.name is string && data.name.size() <= 100
         && ( !('company' in data.keys()) || (data.company is string && data.company.size() <= 100) )
         && data.total_points is number && data.total_points >= 0
-        && data.created_at is string && data.created_at.size() <= 50;
+        && data.created_at is string && data.created_at.size() <= 50
+        && (!('last_updated_timestamp' in data.keys()) || (data.last_updated_timestamp is string && data.last_updated_timestamp.size() <= 50))
+        && (!('event_id' in data.keys()) || (data.event_id is string && data.event_id.size() <= 100));
     }
 
     function isValidScan(data) {
       return data.keys().hasAll(['id', 'attendee_id', 'booth_id', 'timestamp', 'tier_points', 'visitor_rank'])
-        && data.keys().size() == 6
         && data.id is string && data.id.size() <= 100
         && data.attendee_id is string && data.attendee_id.size() <= 100
         && data.booth_id is string && data.booth_id.size() <= 100
         && data.timestamp is string && data.timestamp.size() <= 50
         && data.tier_points is number && data.tier_points >= 0
-        && data.visitor_rank is number && data.visitor_rank >= 1;
+        && data.visitor_rank is number && data.visitor_rank >= 1
+        && (!('event_id' in data.keys()) || (data.event_id is string && data.event_id.size() <= 100));
     }
 
     match /booths/{boothId} {
       allow read: if true;
-      allow create: if isVerified() && isValidId(boothId) && isValidBooth(incoming()) && incoming().keys().size() == 5;
-      allow update: if isVerified() && isValidId(boothId) && isValidBooth(incoming())
-                    && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'location', 'description', 'id']);
+      allow create: if isVerified() && isValidId(boothId) && isValidBooth(incoming());
+      allow update: if isVerified() && isValidId(boothId) && isValidBooth(incoming());
     }
 
     match /attendees/{attendeeId} {
       allow read: if true;
-      allow create: if isVerified() && isValidId(attendeeId) && isValidAttendee(incoming()) && (incoming().keys().size() == 4 || incoming().keys().size() == 5);
-      allow update: if isVerified() && isValidId(attendeeId) && isValidAttendee(incoming())
-                    && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'company', 'total_points', 'created_at', 'id']);
+      allow create: if isVerified() && isValidId(attendeeId) && isValidAttendee(incoming());
+      allow update: if isVerified() && isValidId(attendeeId) && isValidAttendee(incoming());
     }
 
     match /scans/{scanId} {

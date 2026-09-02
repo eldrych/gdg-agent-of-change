@@ -15,6 +15,13 @@ export function LeaderboardPage({ onNavigateToBooth }: LeaderboardPageProps) {
       if (b.total_points !== a.total_points) {
         return b.total_points - a.total_points;
       }
+      
+      const timeA = a.last_updated_timestamp ? new Date(a.last_updated_timestamp).getTime() : new Date(a.created_at).getTime();
+      const timeB = b.last_updated_timestamp ? new Date(b.last_updated_timestamp).getTime() : new Date(b.created_at).getTime();
+      
+      if (timeA !== timeB) {
+        return timeA - timeB; // Earliest timestamp wins (ascending)
+      }
       return a.name.localeCompare(b.name);
     });
     return sorted.slice(0, 10);

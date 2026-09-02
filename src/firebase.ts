@@ -1,5 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword 
+} from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -78,6 +84,25 @@ export const loginWithGoogle = async () => {
   }
 };
 
+export const loginWithEmail = async (email: string, pass: string) => {
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, pass);
+    return result.user;
+  } catch (error: any) {
+    if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+      // Try to create account if user doesn't exist
+      try {
+        const createResult = await createUserWithEmailAndPassword(auth, email, pass);
+        return createResult.user;
+      } catch (createErr) {
+        throw createErr;
+      }
+    }
+    throw error;
+  }
+};
+
 export const logout = async () => {
   await auth.signOut();
 };
+

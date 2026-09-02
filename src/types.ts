@@ -4,6 +4,7 @@ export interface Booth {
   category?: string;
   location?: string;
   description?: string;
+  event_id?: string;
 }
 
 export interface Attendee {
@@ -13,6 +14,8 @@ export interface Attendee {
   company?: string;
   total_points: number;
   created_at: string;
+  last_updated_timestamp?: string;
+  event_id?: string;
 }
 
 export interface Scan {
@@ -22,6 +25,7 @@ export interface Scan {
   timestamp: string;
   tier_points: number;
   visitor_rank: number;
+  event_id?: string;
 }
 
 export interface TierInfo {

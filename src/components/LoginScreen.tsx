@@ -4,7 +4,6 @@ import {
   Building2, 
   KeyRound, 
   ArrowRight, 
-  Sparkles, 
   CheckCircle, 
   Cpu, 
   Cloud, 
@@ -19,9 +18,16 @@ import {
   Search,
   ScanLine,
   Trophy,
-  LogIn
+  LogIn,
+  Mail,
+  AlertTriangle,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  Sparkles
 } from 'lucide-react';
-import { loginWithGoogle, auth } from '../firebase';
+import { loginWithGoogle, loginWithEmail, auth } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useBooths, useScansForBooth, seedBooths } from '../hooks/useFirestore';
 
@@ -95,15 +101,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToL
   const [selectedBoothId, setSelectedBoothId] = useState<string>('Booth1');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isOAuthError, setIsOAuthError] = useState(false);
   
+  // Auth state
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  
+  // Login form toggle
+  const [authMode, setAuthMode] = useState<'google' | 'email'>('google');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [showOAuthGuide, setShowOAuthGuide] = useState(false);
 
   useEffect(() => {
-    seedBooths();
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
+      if (currentUser) {
+        seedBooths().catch(console.error);
+      }
     });
     return unsubscribe;
   }, []);
@@ -135,9 +152,43 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToL
   const handleGoogleLogin = async () => {
     try {
       setError(null);
+      setIsOAuthError(false);
       await loginWithGoogle();
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in');
+      if (err.message?.includes('auth/popup-closed-by-user')) {
+        return;
+      }
+      const errString = err?.message || String(err);
+      if (
+        errString.includes('restricted_client') || 
+        errString.includes('403') || 
+        errString.includes('OAuth') || 
+        errString.includes('configuration-not-found') ||
+        errString.includes('operation-not-allowed')
+      ) {
+        setIsOAuthError(true);
+        setShowOAuthGuide(true);
+        setError('Google OAuth Consent Screen is not yet configured for this Google Cloud Project. See setup steps below, or use Email/Password sign-in to continue immediately.');
+      } else {
+        setError(err.message || 'Failed to sign in');
+      }
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput || !passwordInput) {
+      setError('Please enter both email and password.');
+      return;
+    }
+    setEmailLoading(true);
+    setError(null);
+    try {
+      await loginWithEmail(emailInput.trim(), passwordInput);
+    } catch (err: any) {
+      setError(err?.message || 'Email authentication failed');
+    } finally {
+      setEmailLoading(false);
     }
   };
 
@@ -189,33 +240,155 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToL
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-center animate-in fade-in slide-in-from-top-2">
-            {error}
+          <div className="bg-red-500/10 border border-red-500/30 text-red-300 p-4 rounded-2xl text-sm font-medium animate-in fade-in slide-in-from-top-2 max-w-xl mx-auto space-y-2">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-red-200">Authentication Notice</p>
+                <p className="text-xs text-red-300/90 mt-0.5">{error}</p>
+              </div>
+            </div>
           </div>
         )}
 
         {!user ? (
-          <div className="w-full max-w-sm mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 bg-sky-500/10 blur-[60px] w-32 h-32 rounded-full pointer-events-none" />
-            
-            <div className="flex flex-col items-center justify-center space-y-6">
-              <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center shadow-inner">
-                <KeyRound className="w-8 h-8 text-slate-400" />
-              </div>
+          <div className="w-full max-w-md mx-auto space-y-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 bg-sky-500/10 blur-[60px] w-32 h-32 rounded-full pointer-events-none" />
               
-              <div className="text-center space-y-2">
-                <h2 className="text-xl font-bold text-white">Operator Access</h2>
-                <p className="text-slate-400 text-sm">Please sign in with your authorized event account to continue.</p>
-              </div>
+              <div className="flex flex-col items-center justify-center space-y-6">
+                <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center shadow-inner">
+                  <KeyRound className="w-8 h-8 text-slate-400" />
+                </div>
+                
+                <div className="text-center space-y-1">
+                  <h2 className="text-xl font-bold text-white">Operator Access</h2>
+                  <p className="text-slate-400 text-xs">Sign in to record badge scans and assign points.</p>
+                </div>
 
-              <button
-                onClick={handleGoogleLogin}
-                className="w-full flex items-center justify-center gap-2 bg-white hover:bg-gray-100 text-slate-900 font-semibold py-3 px-4 rounded-xl transition-all active:scale-95 shadow-sm"
-              >
-                <LogIn className="w-4 h-4" />
-                Sign in with Google
-              </button>
+                {/* Auth Mode Tabs */}
+                <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-xl border border-slate-800 w-full text-xs font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode('google')}
+                    className={`py-2 px-3 rounded-lg transition-all ${authMode === 'google' ? 'bg-indigo-600 text-white font-semibold shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Google Sign-In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode('email')}
+                    className={`py-2 px-3 rounded-lg transition-all ${authMode === 'email' ? 'bg-indigo-600 text-white font-semibold shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Email / Password
+                  </button>
+                </div>
+
+                {authMode === 'google' ? (
+                  <div className="w-full space-y-3">
+                    <button
+                      onClick={handleGoogleLogin}
+                      className="w-full flex items-center justify-center gap-2.5 bg-white hover:bg-gray-100 text-slate-900 font-semibold py-3 px-4 rounded-xl transition-all active:scale-95 shadow-md"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.97 0 12s.45 3.83 1.25 5.42l4.03-3.15z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                      </svg>
+                      Sign in with Google
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setShowOAuthGuide(!showOAuthGuide)}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 pt-2 transition-colors"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      <span>Google OAuth Consent Screen Setup Guide</span>
+                      {showOAuthGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleEmailLogin} className="w-full space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Email</label>
+                      <input
+                        type="email"
+                        required
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        placeholder="operator@event.com"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Password</label>
+                      <input
+                        type="password"
+                        required
+                        value={passwordInput}
+                        onChange={(e) => setPasswordInput(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={emailLoading}
+                      className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-4 rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50 mt-2"
+                    >
+                      <Mail className="w-4 h-4" />
+                      {emailLoading ? 'Signing In...' : 'Sign In / Register Operator'}
+                    </button>
+                    <p className="text-[11px] text-slate-500 text-center">New operator credentials are auto-registered instantly.</p>
+                  </form>
+                )}
+              </div>
             </div>
+
+            {/* Collapsible / Floating Setup Guide Box */}
+            {showOAuthGuide && (
+              <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl p-5 shadow-xl space-y-3 text-xs text-slate-300 animate-in fade-in slide-in-from-top-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2 font-bold text-sm text-indigo-300">
+                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                    How to Fix Error 403: restricted_client
+                  </div>
+                  <a
+                    href="https://console.developers.google.com/apis/credentials/consent?project=348994898123"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-sky-400 hover:underline font-semibold"
+                  >
+                    Open Console <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+                
+                <ol className="list-decimal list-inside space-y-2 text-slate-300 leading-relaxed">
+                  <li>
+                    Go to <a href="https://console.developers.google.com/apis/credentials/consent?project=348994898123" target="_blank" rel="noreferrer" className="text-sky-400 underline font-mono">Google Cloud OAuth Consent Screen</a> (Project: <code className="bg-slate-950 px-1 py-0.5 rounded text-indigo-300 font-mono">348994898123</code>).
+                  </li>
+                  <li>
+                    Select <strong>External</strong> User Type and click <strong>Create</strong>.
+                  </li>
+                  <li>
+                    Fill in the required 3 fields:
+                    <ul className="list-disc list-inside pl-4 text-slate-400 mt-1 space-y-0.5">
+                      <li><strong>App name:</strong> Event Booth Scanner</li>
+                      <li><strong>User support email:</strong> Select your email</li>
+                      <li><strong>Developer contact email:</strong> Enter your email</li>
+                    </ul>
+                  </li>
+                  <li>
+                    Click <strong>Save and Continue</strong> through Scopes.
+                  </li>
+                  <li>
+                    Under <strong>Test users</strong>, click <strong>+ Add Users</strong> and enter your Google email (or click <em>Publish App</em>).
+                  </li>
+                </ol>
+              </div>
+            )}
           </div>
         ) : (
           <div className="w-full mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
@@ -230,7 +403,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToL
                   Select Your Assigned Booth
                 </h2>
                 <p className="text-slate-400 text-sm mt-1">
-                  Choose the booth you are operating for this session. Signed in as {user.email}.
+                  Choose the booth you are operating for this session. Signed in as {user.email || user.uid}.
                 </p>
               </div>
 
@@ -307,3 +480,4 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onNavigateToL
     </div>
   );
 };
+

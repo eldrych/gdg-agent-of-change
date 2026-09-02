@@ -3,6 +3,7 @@ import { getActiveSession, setActiveSession, clearActiveSession, getBoothById } 
 import { LoginScreen } from './components/LoginScreen';
 import { ScannerScreen } from './components/ScannerScreen';
 import { LeaderboardPage } from './components/LeaderboardPage';
+import { AdminPage } from './components/AdminPage';
 
 export default function App() {
   const [activeBoothId, setActiveBoothId] = useState<string | null>(null);
@@ -16,6 +17,8 @@ export default function App() {
       const hash = window.location.hash.toLowerCase();
       if (path === '/leaderboards' || path === '/leaderboard' || hash === '#leaderboards' || hash === '#leaderboard') {
         setCurrentPath('/leaderboards');
+      } else if (path === '/main-admin-access' || hash === '#main-admin-access') {
+        setCurrentPath('/main-admin-access');
       } else {
         setCurrentPath(window.location.pathname);
       }
@@ -74,6 +77,11 @@ export default function App() {
   // Dedicated /leaderboards route
   if (currentPath === '/leaderboards' || currentPath === '/leaderboard') {
     return <LeaderboardPage onNavigateToBooth={() => navigateTo('/')} />;
+  }
+
+  // Dedicated /main-admin-access route
+  if (currentPath === '/main-admin-access') {
+    return <AdminPage />;
   }
 
   return (

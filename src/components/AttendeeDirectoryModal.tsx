@@ -21,7 +21,17 @@ export const AttendeeDirectoryModal: React.FC<AttendeeDirectoryModalProps> = ({ 
   const [badgeQrUrl, setBadgeQrUrl] = useState<string>('');
 
   useEffect(() => {
-    const attList = [...allAttendees].sort((a, b) => b.total_points - a.total_points);
+    const attList = [...allAttendees].sort((a, b) => {
+      if (b.total_points !== a.total_points) {
+        return b.total_points - a.total_points;
+      }
+      const timeA = a.last_updated_timestamp ? new Date(a.last_updated_timestamp).getTime() : new Date(a.created_at).getTime();
+      const timeB = b.last_updated_timestamp ? new Date(b.last_updated_timestamp).getTime() : new Date(b.created_at).getTime();
+      if (timeA !== timeB) {
+        return timeA - timeB; // Earliest timestamp wins
+      }
+      return a.name.localeCompare(b.name);
+    });
     setAttendees(attList);
     if (!selectedAttendee && attList.length > 0) {
       setSelectedAttendee(attList[0]);
