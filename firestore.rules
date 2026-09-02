@@ -18,6 +18,7 @@ service cloud.firestore {
         && data.category is string && data.category.size() <= 100
         && data.location is string && data.location.size() <= 200
         && data.description is string && data.description.size() <= 1000
+        && (!('total_unique_scans' in data.keys()) || data.total_unique_scans is number)
         && (!('event_id' in data.keys()) || (data.event_id is string && data.event_id.size() <= 100));
     }
 
@@ -26,7 +27,9 @@ service cloud.firestore {
         && data.id is string && data.id.size() <= 100
         && data.name is string && data.name.size() <= 100
         && ( !('company' in data.keys()) || (data.company is string && data.company.size() <= 100) )
-        && data.total_points is number && data.total_points >= 0
+        && ( !('qr_code_id' in data.keys()) || (data.qr_code_id is string && data.qr_code_id.size() <= 100) )
+        && ( !('email' in data.keys()) || (data.email is string && data.email.size() <= 100) )
+        && data.total_points is number
         && data.created_at is string && data.created_at.size() <= 50
         && (!('last_updated_timestamp' in data.keys()) || (data.last_updated_timestamp is string && data.last_updated_timestamp.size() <= 50))
         && (!('event_id' in data.keys()) || (data.event_id is string && data.event_id.size() <= 100));
@@ -39,6 +42,7 @@ service cloud.firestore {
         && data.booth_id is string && data.booth_id.size() <= 100
         && data.timestamp is string && data.timestamp.size() <= 50
         && data.tier_points is number && data.tier_points >= 0
+        && (!('points_awarded' in data.keys()) || data.points_awarded is number)
         && data.visitor_rank is number && data.visitor_rank >= 1
         && (!('event_id' in data.keys()) || (data.event_id is string && data.event_id.size() <= 100));
     }
@@ -47,17 +51,20 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isVerified() && isValidId(boothId) && isValidBooth(incoming());
       allow update: if isVerified() && isValidId(boothId) && isValidBooth(incoming());
+      allow delete: if isVerified();
     }
 
     match /attendees/{attendeeId} {
       allow read: if true;
       allow create: if isVerified() && isValidId(attendeeId) && isValidAttendee(incoming());
       allow update: if isVerified() && isValidId(attendeeId) && isValidAttendee(incoming());
+      allow delete: if isVerified();
     }
 
     match /scans/{scanId} {
       allow read: if true;
       allow create: if isVerified() && isValidId(scanId) && isValidScan(incoming());
+      allow delete: if isVerified();
     }
   }
 }

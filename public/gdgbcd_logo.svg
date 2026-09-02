@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 120" fill="none">
+  <!-- Left Bracket < -->
+  <!-- Top Red Pill of < -->
+  <path d="M 68 28 L 26 56 C 21 60 21 67 26 71 L 28 72 C 31 75 36 75 40 72 L 78 46 C 83 42 83 35 78 31 L 76 29 C 74 27 71 26 68 28 Z" fill="#EA4335" />
+  <!-- Bottom Blue Pill of < -->
+  <path d="M 26 57 C 21 61 21 67 26 71 L 68 99 C 71 101 74 100 76 98 L 78 96 C 83 92 83 85 78 81 L 40 55 C 36 52 31 52 28 55 Z" fill="#4285F4" />
+
+  <!-- Right Bracket > -->
+  <!-- Top Green Pill of > -->
+  <path d="M 98 28 C 95 26 92 27 90 29 L 88 31 C 83 35 83 42 88 46 L 126 72 C 130 75 135 75 138 72 L 140 71 C 145 67 145 60 140 56 L 98 28 Z" fill="#34A853" />
+  <!-- Bottom Yellow Pill of > -->
+  <path d="M 138 55 C 135 52 130 52 126 55 L 88 81 C 83 85 83 92 88 96 L 90 98 C 92 100 95 101 98 99 L 140 71 C 145 67 145 61 140 57 Z" fill="#FBBC04" />
+
+  <!-- GDG Bacolod Text -->
+  <text x="175" y="73" fill="#FFFFFF" font-family="'Inter', 'Google Sans', system-ui, sans-serif" font-size="38" font-weight="700" letter-spacing="-0.5">Google Developer Groups</text>
+  <text x="175" y="102" fill="#94A3B8" font-family="'Inter', 'Google Sans', system-ui, sans-serif" font-size="20" font-weight="600" letter-spacing="2">BACOLOD</text>
+</svg>

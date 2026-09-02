@@ -114,6 +114,207 @@ export function useAttendees() {
   return attendees;
 }
 
+export function useAllScans() {
+  const [scans, setScans] = useState<Scan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [eventId, setEventId] = useState(getActiveEventId());
+
+  useEffect(() => {
+    const handleEventChange = () => {
+      setEventId(getActiveEventId());
+      setScans([]);
+      setLoading(true);
+    };
+    window.addEventListener('event_changed', handleEventChange);
+
+    const q = query(collection(db, 'scans'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const activeEventId = getActiveEventId();
+      const s: Scan[] = [];
+      snapshot.forEach(doc => {
+        const scan = doc.data() as Scan;
+        if (!scan.event_id || scan.event_id === activeEventId) {
+          s.push(scan);
+        }
+      });
+      s.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setScans(s);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'scans');
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('event_changed', handleEventChange);
+    };
+  }, [eventId]);
+
+  return { scans, loading };
+}
+
+export async function adminAdjustUserPoints(attendeeId: string, deltaPoints: number): Promise<void> {
+  const activeEventId = getActiveEventId();
+  const docAttendeeId = `${activeEventId}_${attendeeId}`;
+  const attendeeRef = doc(db, 'attendees', docAttendeeId);
+  const snap = await getDoc(attendeeRef);
+  const now = new Date().toISOString();
+
+  if (snap.exists()) {
+    const current = snap.data() as Attendee;
+    const updated = Math.max(0, (current.total_points || 0) + deltaPoints);
+    await writeBatch(db).update(attendeeRef, {
+      total_points: updated,
+      last_updated_timestamp: now,
+    }).commit();
+  }
+}
+
+export async function adminSetUserPoints(attendeeId: string, newTotalPoints: number): Promise<void> {
+  const activeEventId = getActiveEventId();
+  const docAttendeeId = `${activeEventId}_${attendeeId}`;
+  const attendeeRef = doc(db, 'attendees', docAttendeeId);
+  const now = new Date().toISOString();
+
+  await writeBatch(db).update(attendeeRef, {
+    total_points: Math.max(0, newTotalPoints),
+    last_updated_timestamp: now,
+  }).commit();
+}
+
+export async function adminUpdateUserProfile(attendeeId: string, data: { name: string; qr_code_id?: string; company?: string }): Promise<void> {
+  const activeEventId = getActiveEventId();
+  const docAttendeeId = `${activeEventId}_${attendeeId}`;
+  const attendeeRef = doc(db, 'attendees', docAttendeeId);
+  const now = new Date().toISOString();
+
+  const updatePayload: any = {
+    name: data.name.trim(),
+    last_updated_timestamp: now,
+  };
+  if (data.qr_code_id !== undefined) {
+    updatePayload.qr_code_id = data.qr_code_id.trim();
+  }
+  if (data.company !== undefined) {
+    updatePayload.company = data.company.trim();
+  }
+
+  await writeBatch(db).update(attendeeRef, updatePayload).commit();
+}
+
+export async function adminUpdateBoothDetails(
+  boothId: string,
+  data: { name: string; category?: string; location?: string; description?: string }
+): Promise<void> {
+  const activeEventId = getActiveEventId();
+  const docBoothId = `${activeEventId}_${boothId}`;
+  const boothRef = doc(db, 'booths', docBoothId);
+  const snap = await getDoc(boothRef);
+
+  const cleanName = data.name.trim();
+  const cleanCategory = (data.category || '').trim() || 'General';
+  const cleanLocation = (data.location || '').trim() || 'Exhibition Hall';
+  const cleanDesc = (data.description !== undefined ? data.description.trim() : '');
+
+  if (snap.exists()) {
+    const existing = snap.data() as Booth;
+    await writeBatch(db).update(boothRef, {
+      name: cleanName,
+      category: cleanCategory,
+      location: cleanLocation,
+      description: cleanDesc || existing.description || 'Exhibition Booth',
+    }).commit();
+  } else {
+    // Check fallback doc with un-prefixed ID
+    const fallbackRef = doc(db, 'booths', boothId);
+    const fallbackSnap = await getDoc(fallbackRef);
+    if (fallbackSnap.exists()) {
+      const existing = fallbackSnap.data() as Booth;
+      await writeBatch(db).update(fallbackRef, {
+        name: cleanName,
+        category: cleanCategory,
+        location: cleanLocation,
+        description: cleanDesc || existing.description || 'Exhibition Booth',
+      }).commit();
+    } else {
+      const newBooth: Booth = {
+        id: boothId,
+        name: cleanName,
+        category: cleanCategory,
+        location: cleanLocation,
+        description: cleanDesc || 'Exhibition Booth',
+        event_id: activeEventId,
+      };
+      await writeBatch(db).set(boothRef, newBooth).commit();
+    }
+  }
+
+  // Update in localStorage fallback
+  try {
+    const raw = localStorage.getItem('booth_event_booths_v1');
+    if (raw) {
+      const list = JSON.parse(raw) as Booth[];
+      const idx = list.findIndex((b) => b.id.toLowerCase() === boothId.toLowerCase());
+      if (idx >= 0) {
+        list[idx] = {
+          ...list[idx],
+          name: cleanName,
+          category: cleanCategory,
+          location: cleanLocation,
+          description: cleanDesc || list[idx].description,
+        };
+        localStorage.setItem('booth_event_booths_v1', JSON.stringify(list));
+      }
+    }
+  } catch (err) {
+    console.error('LocalStorage booth update sync error:', err);
+  }
+}
+
+export async function adminDeleteUser(attendeeId: string): Promise<void> {
+  const activeEventId = getActiveEventId();
+  const docAttendeeId = `${activeEventId}_${attendeeId}`;
+  const attendeeRef = doc(db, 'attendees', docAttendeeId);
+  
+  const batch = writeBatch(db);
+  batch.delete(attendeeRef);
+
+  // Also remove scans associated with this user
+  const scansQ = query(collection(db, 'scans'));
+  const snap = await getDocs(scansQ);
+  snap.forEach(d => {
+    const s = d.data() as Scan;
+    if (s.attendee_id === attendeeId && (!s.event_id || s.event_id === activeEventId)) {
+      batch.delete(doc(db, 'scans', d.id));
+    }
+  });
+
+  await batch.commit();
+}
+
+export async function adminDeleteScan(scanId: string, attendeeId: string, pointsAwarded: number): Promise<void> {
+  const activeEventId = getActiveEventId();
+  const docAttendeeId = `${activeEventId}_${attendeeId}`;
+  const attendeeRef = doc(db, 'attendees', docAttendeeId);
+  const scanRef = doc(db, 'scans', scanId);
+
+  const batch = writeBatch(db);
+  batch.delete(scanRef);
+
+  const attendeeSnap = await getDoc(attendeeRef);
+  if (attendeeSnap.exists()) {
+    const current = attendeeSnap.data() as Attendee;
+    const newTotal = Math.max(0, (current.total_points || 0) - pointsAwarded);
+    batch.update(attendeeRef, {
+      total_points: newTotal,
+      last_updated_timestamp: new Date().toISOString(),
+    });
+  }
+
+  await batch.commit();
+}
+
 export async function processScanFirebase(boothId: string, rawAttendeeInput: string, boothName: string): Promise<ScanResult> {
   const trimmedInput = rawAttendeeInput.trim();
   if (!trimmedInput) {
@@ -131,6 +332,7 @@ export async function processScanFirebase(boothId: string, rawAttendeeInput: str
       const parsed = JSON.parse(trimmedInput);
       if (parsed.id) attendeeId = parsed.id;
       else if (parsed.attendeeId) attendeeId = parsed.attendeeId;
+      else if (parsed.qr_code_id) attendeeId = parsed.qr_code_id;
     }
   } catch {
     // raw string is fine
@@ -191,6 +393,7 @@ export async function processScanFirebase(boothId: string, rawAttendeeInput: str
       const formattedName = attendeeId.startsWith('QR-') ? `Attendee ${attendeeId.replace('QR-', '')}` : attendeeId;
       attendeeData = {
         id: attendeeId, // Store original ID for UI
+        qr_code_id: attendeeId,
         name: formattedName,
         company: 'Event Guest',
         total_points: pointsToAward,
@@ -204,7 +407,8 @@ export async function processScanFirebase(boothId: string, rawAttendeeInput: str
       attendeeData.last_updated_timestamp = now;
       batch.update(attendeeRef, { 
         total_points: attendeeData.total_points,
-        last_updated_timestamp: now
+        last_updated_timestamp: now,
+        qr_code_id: attendeeData.qr_code_id || attendeeId,
       });
     }
 
@@ -215,6 +419,7 @@ export async function processScanFirebase(boothId: string, rawAttendeeInput: str
       booth_id: boothId,
       timestamp: now,
       tier_points: pointsToAward,
+      points_awarded: pointsToAward,
       visitor_rank: newVisitorRank,
       event_id: activeEventId,
     };
